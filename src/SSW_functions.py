@@ -18,35 +18,35 @@ def get_atm(year, timestep):
     timestep : day after the start of the event
 
     Returns:
-    -----------
+    ----------
     atm : atmospheric profile ready to use in ARTS 3
     """
     ds = xr.open_dataset(f"data/{year}_data.nc", engine="netcdf4")
 
     # convert RH to water vapor VMR:
-    x_profile = ty.physics.relative_humidity2vmr(ds.rh[timestep,:].data, ds.pressure[timestep,:].data, ds.t[timestep,:].data)
+    x_profile = ty.physics.relative_humidity2vmr(ds.rh.isel(time=timestep).data, ds.pressure.data, ds.t.isel(time=timestep).data)
 
     # convert mass mixing ratios to VMR:
-    co2_profile = ty.physics.mixing_ratio2vmr(ds.co2[timestep,:].data)
-    no2_profile = ty.physics.mixing_ratio2vmr(ds.no2[timestep,:].data)
-    no_profile = ty.physics.mixing_ratio2vmr(ds.no[timestep,:].data)
-    o3_profile = ty.physics.mixing_ratio2vmr(ds.o3[timestep,:].data)
+    co2_profile = ty.physics.mixing_ratio2vmr(ds.co2.isel(time=timestep).data)
+    no2_profile = ty.physics.mixing_ratio2vmr(ds.no2.isel(time=timestep).data)
+    no_profile = ty.physics.mixing_ratio2vmr(ds.no.isel(time=timestep).data)
+    o3_profile = ty.physics.mixing_ratio2vmr(ds.o3.isel(time=timestep).data)
 
     # convert pressure from hPa to Pa:
-    p_profile = ds.pressure[timestep,:].data * 100
+    p_profile = ds.pressure.data * 100
 
     # convert pressure to height:
     z_profile = ty.physics.pressure2height(p_profile)
 
     atm = xr.Dataset(
         data_vars={
-            "co2": ("alt", co2_profile),
-            "no2": ("alt", no2_profile),
-            "no": ("alt", no_profile),
-            "o3": ("alt", o3_profile),
+            "CO2": ("alt", co2_profile),
+            "NO2": ("alt", no2_profile),
+            "NO": ("alt", no_profile),
+            "O3": ("alt", o3_profile),
             "t": ("alt", ds.t[timestep,:].data),
             "p": ("alt", p_profile),
-            "u": ("alt", ds.u[timestep,:].data),
+            "wind_u": ("alt", ds.u[timestep,:].data),
             "H2O" : ("alt", x_profile),
             "O2": ("alt", np.ones_like(ds.co2[timestep,:].data) * 0.21),
             "N2": ("alt", np.ones_like(ds.co2[timestep,:].data) * 0.78),
@@ -54,19 +54,19 @@ def get_atm(year, timestep):
         coords={"alt" : z_profile, "lat": 75, "lon": 0},
     )
 
-    atm["co2"].attrs = {
+    atm["CO2"].attrs = {
         "units": "mol/mol",
         "long_name": "CO2 volume mixing ratio",
     }
-    atm["no2"].attrs = {
+    atm["NO2"].attrs = {
         "units": "mol/mol",
         "long_name": "NO2 volume mixing ratio",
     }
-    atm["no"].attrs = {
+    atm["NO"].attrs = {
         "units": "mol/mol",
         "long_name": "NO volume mixing ratio",
     }
-    atm["o3"].attrs = {
+    atm["O3"].attrs = {
         "units": "mol/mol",
         "long_name": "Ozone volume mixing ratio",
     }
@@ -78,7 +78,7 @@ def get_atm(year, timestep):
         "units": "Pa",
         "long_name": "Pressure",
     }
-    atm["u"].attrs = {
+    atm["wind_u"].attrs = {
         "units": "m/s",
         "long_name": "zonal mean zonal wind at 10 hPa and 60°N",
     }
@@ -101,3 +101,36 @@ def get_atm(year, timestep):
 
     return atm
 
+
+def get_atm_test(year, timestep):
+
+    ds = xr.open_dataset(f"data/{year}_data.nc", engine="netcdf4")
+
+    # convert RH to water vapor VMR:
+    x_profile = ty.physics.relative_humidity2vmr(ds.rh.isel(time=timestep).data, ds.pressure.data, ds.t.isel(time=timestep).data)
+
+    # convert mass mixing ratios to VMR:
+    co2_profile = ty.physics.mixing_ratio2vmr(ds.co2.isel(time=timestep).data)
+    no2_profile = ty.physics.mixing_ratio2vmr(ds.no2.isel(time=timestep).data)
+    no_profile = ty.physics.mixing_ratio2vmr(ds.no.isel(time=timestep).data)
+    o3_profile = ty.physics.mixing_ratio2vmr(ds.o3.isel(time=timestep).data)
+
+    # convert pressure from hPa to Pa:
+    p_profile = ds.pressure.data * 100
+
+    # convert pressure to height:
+    z_profile = ty.physics.pressure2height(p_profile)
+    t_profile = ds.t.isel(time=timestep).data
+
+    # Erstelle Dictionary mit ARTS-Typen:
+    atm = {
+        pyarts.arts.AtmKey.t: pyarts.arts.Vector(t_profile),
+        pyarts.arts.AtmKey.p: pyarts.arts.Vector(p_profile),
+        pyarts.arts.SpeciesEnum.Water: pyarts.arts.Vector(x_profile),
+        pyarts.arts.SpeciesEnum.CarbonDioxide: pyarts.arts.Vector(co2_profile),
+        pyarts.arts.SpeciesEnum.NitrogenDioxide: pyarts.arts.Vector(no2_profile),
+        pyarts.arts.SpeciesEnum.NitricOxide: pyarts.arts.Vector(no_profile),
+        pyarts.arts.SpeciesEnum.Ozone: pyarts.arts.Vector(o3_profile),
+    }
+
+    return atm
