@@ -10,7 +10,7 @@ from src.atm_flux_recipe_mod import AtmosphericFlux
 
 # Download catalogs
 pyarts.data.download()
-from src.SSW_functions import get_atm
+from src.SSW_functions import get_atm, rad_heating_rate
 
 
 # %% Initialize the operator
@@ -26,35 +26,58 @@ fop = AtmosphericFlux(
 # of the atmosphere by simply creating a dictionary that only contains the
 # fields that you want to change.
 
-atm_profile = get_atm(2010, 2)
-# atm = fop.get_atmosphere()
-# atm  = pyarts.data.to_atmospheric_field(atm_profile)
-# atm_dict = atm.to_dict()
-# atm_array = pyarts.arts.ArrayOfAtmPoint.from_dict(atm_dict)
+atm_profile = get_atm(2006, 0)
+
 # %% Get the profile flux for the given `atm`
 # Passing `atm` is optional, if not passed the operator will use the current atmosphere,
 # which is the atmosphere that was set with the last call to `__call__`, or the constructor
 # default if no call to `__call__` has been made.
 solar, thermal, altitude = fop(atmospheric_profile=atm_profile)
 
+# %% net fluxes
+net_lw = thermal.down - thermal.up
+net_sw = solar.down - solar.up
+net_flux = net_lw + net_sw
+
 # %% Plot
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 6))
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 6))
 
 ax1.plot(solar.up, altitude / 1e3)
 ax1.plot(solar.down, altitude / 1e3)
-ax1.legend(["up", "down"])
+ax1.plot(net_sw, altitude / 1e3)
+ax1.legend(["up", "down", "net"])
 ax1.set_ylabel("Altitude [km]")
 ax1.set_xlabel("Flux [W / m$^2$]")
 ax1.set_title("Solar flux")
 
 ax2.plot(thermal.up, altitude / 1e3)
 ax2.plot(thermal.down, altitude / 1e3)
-ax2.legend(["up", "down"])
+ax2.plot(net_lw, altitude / 1e3)
+ax2.legend(["up", "down", "net"])
 ax2.set_ylabel("Altitude [km]")
 ax2.set_xlabel("Flux [W / m$^2$]")
 ax2.set_title("Thermal flux")
 
+ax3.plot(net_sw, altitude / 1e3)
+ax3.plot(net_lw, altitude / 1e3)
+ax3.plot(net_flux, altitude / 1e3)
+ax3.legend(["net_sw", "net_lw", "net"])
+ax3.set_ylabel("Altitude [km]")
+ax3.set_xlabel("Flux [W / m$^2$]")
+ax3.set_title("Total flux")
+
 if "ARTS_HEADLESS" not in os.environ:
     plt.show()
 
-# %%
+# %% calculate heating / cooling rates
+heating_rate = rad_heating_rate(altitude_vec=altitude, flux_vec = net_flux)
+
+# %% plot heating rate:
+fig, ax = plt.subplots(1, 1, figsize=(5, 6))
+ax.plot(heating_rate, altitude[:-1] / 1e3)
+ax.axvline(x = 0, color = "black", linestyle = "dashed")
+ax.legend(["heating rate"])
+ax.set_ylabel("Altitude [km]")
+ax.set_xlabel("heating rate [K / dt]")
+ax.set_title("Heating rate")
+plt.show()

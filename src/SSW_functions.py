@@ -6,6 +6,10 @@ import xarray as xr
 import pyarts3 as pyarts
 import netCDF4 as netcdf4
 import typhon as ty
+import os
+print(os.getcwd())
+
+base_path = "/Users/marieke/software/pycharm_projects/RadiativeRelaxationSSW/"
 
 
 def get_atm(year, timestep):
@@ -101,36 +105,66 @@ def get_atm(year, timestep):
 
     return atm
 
+def duration(year):
+    """
+    Calculates the duration of the SSW event in a specific year.
 
-def get_atm_test(year, timestep):
+    Inputs:
+    ----------
+    year: year of SSW event
 
+    Returns:
+    ----------
+    duration_ssw: duration of the SSW event in days as integer
+    """
     ds = xr.open_dataset(f"data/{year}_data.nc", engine="netcdf4")
+    duration_ssw = len(ds.time)
+    return duration_ssw
 
-    # convert RH to water vapor VMR:
-    x_profile = ty.physics.relative_humidity2vmr(ds.rh.isel(time=timestep).data, ds.pressure.data, ds.t.isel(time=timestep).data)
 
-    # convert mass mixing ratios to VMR:
-    co2_profile = ty.physics.mixing_ratio2vmr(ds.co2.isel(time=timestep).data)
-    no2_profile = ty.physics.mixing_ratio2vmr(ds.no2.isel(time=timestep).data)
-    no_profile = ty.physics.mixing_ratio2vmr(ds.no.isel(time=timestep).data)
-    o3_profile = ty.physics.mixing_ratio2vmr(ds.o3.isel(time=timestep).data)
+def observed_temperature(year, duration_of_SSW, pressure_level_strat):
+    """
+    Extracts the observed temperature evolution with time of an SSW event in a specific year.
 
-    # convert pressure from hPa to Pa:
-    p_profile = ds.pressure.data * 100
+    Inputs:
+    ----------
+    year: year of SSW event
+    duration_of_SSW: duration of the SSW event in days as integer
+    pressure_level_strat: pressure level where the temperature evolution should be extracted
 
-    # convert pressure to height:
-    z_profile = ty.physics.pressure2height(p_profile)
-    t_profile = ds.t.isel(time=timestep).data
+    Returns:
+    ----------
+    temp_strat: observed temperature evolution as a numpy array
+    pressure_level: pressure level where the temperature evolution should be extracted
+    """
+    temp_strat = []
+    pressure_level = 0.
+    for timestep in range(duration_of_SSW):
+        atmosphere = get_atm(year, timestep)
+        pressure_level =+ atmosphere.p[pressure_level_strat]
+        temp_strat.append(atmosphere.t[pressure_level_strat])
+    return np.array(temp_strat), pressure_level.item()
 
-    # Erstelle Dictionary mit ARTS-Typen:
-    atm = {
-        pyarts.arts.AtmKey.t: pyarts.arts.Vector(t_profile),
-        pyarts.arts.AtmKey.p: pyarts.arts.Vector(p_profile),
-        pyarts.arts.SpeciesEnum.Water: pyarts.arts.Vector(x_profile),
-        pyarts.arts.SpeciesEnum.CarbonDioxide: pyarts.arts.Vector(co2_profile),
-        pyarts.arts.SpeciesEnum.NitrogenDioxide: pyarts.arts.Vector(no2_profile),
-        pyarts.arts.SpeciesEnum.NitricOxide: pyarts.arts.Vector(no_profile),
-        pyarts.arts.SpeciesEnum.Ozone: pyarts.arts.Vector(o3_profile),
-    }
 
-    return atm
+
+
+def rad_heating_rate(altitude_vec, flux_vec):
+    """
+    Calculates the radiative heating rate for every height level.
+
+    Inputs:
+    -----------
+    altitude_vec: altitude vector
+    flux_vec: flux vector
+
+    Returns:
+    -----------
+    dT_dt: heating rate vector
+    """
+    rho = 1
+    c_p = 1004
+    dT_dt = []
+    for alt in range(len(altitude_vec)-1):
+        dF_dz = flux_vec[alt+1] - flux_vec[alt]
+        dT_dt.append(-1/(rho*c_p)*dF_dz)
+    return dT_dt
