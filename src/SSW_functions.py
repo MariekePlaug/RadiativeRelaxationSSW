@@ -101,36 +101,3 @@ def get_atm(year, timestep):
 
     return atm
 
-
-def get_atm_test(year, timestep):
-
-    ds = xr.open_dataset(f"data/{year}_data.nc", engine="netcdf4")
-
-    # convert RH to water vapor VMR:
-    x_profile = ty.physics.relative_humidity2vmr(ds.rh.isel(time=timestep).data, ds.pressure.data, ds.t.isel(time=timestep).data)
-
-    # convert mass mixing ratios to VMR:
-    co2_profile = ty.physics.mixing_ratio2vmr(ds.co2.isel(time=timestep).data)
-    no2_profile = ty.physics.mixing_ratio2vmr(ds.no2.isel(time=timestep).data)
-    no_profile = ty.physics.mixing_ratio2vmr(ds.no.isel(time=timestep).data)
-    o3_profile = ty.physics.mixing_ratio2vmr(ds.o3.isel(time=timestep).data)
-
-    # convert pressure from hPa to Pa:
-    p_profile = ds.pressure.data * 100
-
-    # convert pressure to height:
-    z_profile = ty.physics.pressure2height(p_profile)
-    t_profile = ds.t.isel(time=timestep).data
-
-    # Erstelle Dictionary mit ARTS-Typen:
-    atm = {
-        pyarts.arts.AtmKey.t: pyarts.arts.Vector(t_profile),
-        pyarts.arts.AtmKey.p: pyarts.arts.Vector(p_profile),
-        pyarts.arts.SpeciesEnum.Water: pyarts.arts.Vector(x_profile),
-        pyarts.arts.SpeciesEnum.CarbonDioxide: pyarts.arts.Vector(co2_profile),
-        pyarts.arts.SpeciesEnum.NitrogenDioxide: pyarts.arts.Vector(no2_profile),
-        pyarts.arts.SpeciesEnum.NitricOxide: pyarts.arts.Vector(no_profile),
-        pyarts.arts.SpeciesEnum.Ozone: pyarts.arts.Vector(o3_profile),
-    }
-
-    return atm
