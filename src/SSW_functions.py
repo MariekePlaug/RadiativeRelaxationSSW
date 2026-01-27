@@ -6,6 +6,10 @@ import xarray as xr
 import pyarts3 as pyarts
 import netCDF4 as netcdf4
 import typhon as ty
+import os
+print(os.getcwd())
+
+base_path = "/Users/marieke/software/pycharm_projects/RadiativeRelaxationSSW/"
 
 
 def get_atm(year, timestep):
@@ -101,3 +105,66 @@ def get_atm(year, timestep):
 
     return atm
 
+def duration(year):
+    """
+    Calculates the duration of the SSW event in a specific year.
+
+    Inputs:
+    ----------
+    year: year of SSW event
+
+    Returns:
+    ----------
+    duration_ssw: duration of the SSW event in days as integer
+    """
+    ds = xr.open_dataset(f"data/{year}_data.nc", engine="netcdf4")
+    duration_ssw = len(ds.time)
+    return duration_ssw
+
+
+def observed_temperature(year, duration_of_SSW, pressure_level_strat):
+    """
+    Extracts the observed temperature evolution with time of an SSW event in a specific year.
+
+    Inputs:
+    ----------
+    year: year of SSW event
+    duration_of_SSW: duration of the SSW event in days as integer
+    pressure_level_strat: pressure level where the temperature evolution should be extracted
+
+    Returns:
+    ----------
+    temp_strat: observed temperature evolution as a numpy array
+    pressure_level: pressure level where the temperature evolution should be extracted
+    """
+    temp_strat = []
+    pressure_level = 0.
+    for timestep in range(duration_of_SSW):
+        atmosphere = get_atm(year, timestep)
+        pressure_level =+ atmosphere.p[pressure_level_strat]
+        temp_strat.append(atmosphere.t[pressure_level_strat])
+    return np.array(temp_strat), pressure_level.item()
+
+
+
+
+def rad_heating_rate(altitude_vec, flux_vec):
+    """
+    Calculates the radiative heating rate for every height level.
+
+    Inputs:
+    -----------
+    altitude_vec: altitude vector
+    flux_vec: flux vector
+
+    Returns:
+    -----------
+    dT_dt: heating rate vector
+    """
+    rho = 1
+    c_p = 1004
+    dT_dt = []
+    for alt in range(len(altitude_vec)-1):
+        dF_dz = flux_vec[alt+1] - flux_vec[alt]
+        dT_dt.append(-1/(rho*c_p)*dF_dz)
+    return dT_dt
