@@ -2,9 +2,11 @@
 
 # %%
 import os
-
+import typhon as ty
 import matplotlib.pyplot as plt
 import pyarts3 as pyarts
+import numpy as np
+from scipy.interpolate import interp1d
 
 from src.atm_flux_recipe_mod import AtmosphericFlux
 
@@ -26,18 +28,23 @@ fop = AtmosphericFlux(
 # of the atmosphere by simply creating a dictionary that only contains the
 # fields that you want to change.
 
-atm_profile = get_atm(2006, 0)
-
+atm_profile = get_atm(2006, 26)
+print(np.where(atm_profile.p == 17500.))
+print(atm_profile.alt[23])
+print(atm_profile.t[0])
 # %% Get the profile flux for the given `atm`
 # Passing `atm` is optional, if not passed the operator will use the current atmosphere,
 # which is the atmosphere that was set with the last call to `__call__`, or the constructor
 # default if no call to `__call__` has been made.
-solar, thermal, altitude = fop(atmospheric_profile=atm_profile)
+
+solar, thermal, altitude = fop(atmospheric_profile=atm_profile, surface_temperature=atm_profile.t[0])
+
 
 # %% net fluxes
 net_lw = thermal.down - thermal.up
 net_sw = solar.down - solar.up
 net_flux = net_lw + net_sw
+print(net_flux.shape)
 
 # %% Plot
 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 6))

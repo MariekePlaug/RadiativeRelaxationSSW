@@ -2,6 +2,9 @@ from dataclasses import dataclass
 
 import numpy as np
 import pyarts3 as pyarts
+from typing import Union
+
+ArrayLike = Union[float, np.ndarray]
 
 
 @dataclass(slots=True)
@@ -23,10 +26,10 @@ class AtmosphericFlux:
         self,
         visible_surface_reflectivity: float = 0.3,
         thermal_surface_reflectivity: float = 0.05,
-        atmospheric_altitude: float = 50e3,
-        surface_temperature: float = 300.0,
+        #atmospheric_altitude: float = 50e3,
+        surface_temperature: float = 255.0,
         NQuad: int = 16,
-        solar_latitude: float = 0.0,
+        solar_latitude: float = 75.0,
         solar_longitude: float = 0.0,
         species: list = ["H2O-161", "O2-66", "N2-44", "CO2-626", "O3-XFIT"],
         remove_lines_percentile: (
@@ -140,7 +143,7 @@ class AtmosphericFlux:
         self,
         atmospheric_profile,
         surface_temperature: float = None,
-        atm_latitude: float = 0.0,
+        atm_latitude: float = 75.0,
         atm_longitude: float = 0.0,
         max_level_step: float = 1e3,
     ):
