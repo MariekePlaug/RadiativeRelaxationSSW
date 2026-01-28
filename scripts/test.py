@@ -17,7 +17,7 @@ from src.SSW_functions import get_atm, rad_heating_rate
 
 # %% Initialize the operator
 fop = AtmosphericFlux(
-    species=["H2O-161", "O2-66", "N2-44", "CO2-626", "O3-XFIT", "NO2", "NO", ],
+    species=["H2O-161", "O2-66", "N2-44", "CO2-626", "O3-XFIT", "NO2", "NO"],
     remove_lines_percentile={"H2O": 70},
 )
 

@@ -1,15 +1,18 @@
 # imports
 
+import os
+
 import numpy as np
 import matplotlib.pyplot as plt
+import pyarts3
 import xarray as xr
 import pyarts3 as pyarts
 import netCDF4 as netcdf4
 import typhon as ty
-import os
-print(os.getcwd())
 
-base_path = "/Users/marieke/software/pycharm_projects/RadiativeRelaxationSSW/"
+from pyarts3.fields.atm import altitude_stiched_gridded_data
+
+from src.atm_flux_recipe_mod import AtmosphericFlux
 
 
 def get_atm(year, timestep):
@@ -121,8 +124,130 @@ def duration(year):
     duration_ssw = len(ds.time)
     return duration_ssw
 
+def calculate_fluxes(year, species_list=["H2O-161", "O2-66", "N2-44", "CO2-626", "O3-XFIT", "NO2", "NO"],
+                     force_recalculate=False, output_dir='flux_data'):
+    """
+    Calculate or load fluxes for all timesteps in a year.
 
-def observed_temperature(year, duration_of_SSW, pressure_level_strat):
+    Parameters:
+    -----------
+    year : int
+        Year to calculate fluxes for
+    species_list : list
+        List of species to include
+    force_recalculate : bool
+        Force recalculation even if saved file exists (default: False)
+    output_dir : str
+        Directory to save/load files (default: 'flux_data')
+
+    Returns:
+    --------
+    solar_fluxes, thermal_fluxes, altitudes, net_thermal, net_solar, net_total
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    filename = os.path.join(output_dir, f'fluxes_{year}.npz')
+
+    # Prüfe ob Datei existiert und lade sie
+    if os.path.exists(filename) and not force_recalculate:
+        print(f"Loading fluxes from {filename}")
+        data = np.load(filename)
+
+        # Rekonstruiere die Flux-Objekte
+        solar_fluxes = [
+            type('Flux', (), {
+                'up': data['solar_up'][i],
+                'direct_down': data['solar_direct_down'][i],
+                'diffuse_down': data['solar_diffuse_down'][i],
+                'down': data['solar_direct_down'][i] + data['solar_diffuse_down'][i]
+            })()
+            for i in range(len(data['solar_up']))
+        ]
+
+        thermal_fluxes = [
+            type('Flux', (), {
+                'up': data['thermal_up'][i],
+                'down': data['thermal_down'][i]
+            })()
+            for i in range(len(data['thermal_up']))
+        ]
+
+        altitudes = list(data['altitudes'])
+        net_thermal = list(data['net_thermal'])
+        net_solar = list(data['net_solar'])
+        net_total = list(data['net_total'])
+
+        return solar_fluxes, thermal_fluxes, altitudes, net_thermal, net_solar, net_total
+
+    # Sonst berechne neu
+    print(f"Calculating fluxes for year {year}")
+    pyarts.data.download()
+    num_timesteps = duration(year)
+
+    fop = AtmosphericFlux(
+        species=species_list,
+        remove_lines_percentile={"H2O": 70},
+    )
+
+    solar_fluxes = []
+    thermal_fluxes = []
+    altitudes = []
+    net_thermal = []
+    net_solar = []
+    net_total = []
+
+    for timestep in range(num_timesteps):
+        atm_profile = get_atm(year, timestep)
+
+        solar, thermal, altitude = fop(
+            atmospheric_profile=atm_profile,
+            surface_temperature=atm_profile.t[0]
+        )
+        net_lw = thermal.up - thermal.down
+        net_sw = solar.up - solar.down
+        net_flux = net_lw + net_sw
+
+        solar_fluxes.append(solar)
+        thermal_fluxes.append(thermal)
+        altitudes.append(altitude)
+        net_thermal.append(net_lw)
+        net_solar.append(net_sw)
+        net_total.append(net_flux)
+
+    # Speichern
+    solar_data = {
+        'up': np.array([s.up for s in solar_fluxes]),
+        'direct_down': np.array([s.direct_down for s in solar_fluxes]),
+        'diffuse_down': np.array([s.diffuse_down for s in solar_fluxes])
+    }
+
+    thermal_data = {
+        'up': np.array([t.up for t in thermal_fluxes]),
+        'down': np.array([t.down for t in thermal_fluxes])
+    }
+
+    altitudes_array = np.array(altitudes)
+    net_thermal_array = np.array(net_thermal)
+    net_solar_array = np.array(net_solar)
+    net_total_array = np.array(net_total)
+
+    np.savez(filename,
+             solar_up=solar_data['up'],
+             solar_direct_down=solar_data['direct_down'],
+             solar_diffuse_down=solar_data['diffuse_down'],
+             thermal_up=thermal_data['up'],
+             thermal_down=thermal_data['down'],
+             altitudes=altitudes_array,
+             net_thermal=net_thermal_array,
+             net_solar=net_solar_array,
+             net_total=net_total_array,
+             year=year,
+             num_timesteps=num_timesteps)
+
+    print(f"Fluxes saved to {filename}")
+
+    return solar_fluxes, thermal_fluxes, altitudes, net_thermal, net_solar, net_total
+
+def observed_temperature(year, pressure_level_strat):
     """
     Extracts the observed temperature evolution with time of an SSW event in a specific year.
 
@@ -137,6 +262,7 @@ def observed_temperature(year, duration_of_SSW, pressure_level_strat):
     temp_strat: observed temperature evolution as a numpy array
     pressure_level: pressure level where the temperature evolution should be extracted
     """
+    duration_of_SSW = duration(year)
     temp_strat = []
     pressure_level = 0.
     for timestep in range(duration_of_SSW):
@@ -145,26 +271,49 @@ def observed_temperature(year, duration_of_SSW, pressure_level_strat):
         temp_strat.append(atmosphere.t[pressure_level_strat])
     return np.array(temp_strat), pressure_level.item()
 
-
-
-
-def rad_heating_rate(altitude_vec, flux_vec):
+def calculate_heating_rate(solar, thermal, altitude):
     """
-    Calculates the radiative heating rate for every height level.
+    Calculate heating rate in K/day from fluxes using altitude gradient.
 
-    Inputs:
+    Parameters:
     -----------
-    altitude_vec: altitude vector
-    flux_vec: flux vector
+    solar : Flux object with .up, .direct_down, .diffuse_down
+    thermal : Flux object with .up and .diffuse_down (or .down)
+    altitude : array of altitude levels in meters
 
     Returns:
-    -----------
-    dT_dt: heating rate vector
+    --------
+    heating_rate_net, heating_rate_thermal, heating_rate_solar : arrays of heating rates in K/day
     """
-    rho = 1
-    c_p = 1004
-    dT_dt = []
-    for alt in range(len(altitude_vec)-1):
-        dF_dz = flux_vec[alt+1] - flux_vec[alt]
-        dT_dt.append(-1/(rho*c_p)*dF_dz)
-    return dT_dt
+
+    def compute_heating_rate_from_flux(flux, altitude, rho, cp, seconds_per_day):
+        """Helper function to compute heating rate from a flux array."""
+        flux_divergence = np.zeros_like(flux)
+
+        # Central differences for interior points
+        for i in range(1, len(flux) - 1):
+            flux_divergence[i] = (flux[i + 1] - flux[i - 1]) / (altitude[i + 1] - altitude[i - 1])
+
+        # Boundary conditions
+        flux_divergence[0] = (flux[1] - flux[0]) / (altitude[1] - altitude[0])
+        flux_divergence[-1] = (flux[-1] - flux[-2]) / (altitude[-1] - altitude[-2])
+
+        # Calculate heating rate
+        return -(1 / (rho * cp)) * flux_divergence * seconds_per_day
+
+    # Constants
+    cp = 1004  # J/(kg·K)
+    rho = 1.225  # kg/m³
+    seconds_per_day = 86400
+
+    # Calculate net fluxes at each level (W/m²)
+    solar_net = solar.up - solar.direct_down - solar.diffuse_down
+    thermal_net = thermal.up - thermal.down
+    net_flux = solar_net + thermal_net
+
+    # Calculate heating rates for all flux types
+    heating_rate_net = compute_heating_rate_from_flux(net_flux, altitude, rho, cp, seconds_per_day)
+    heating_rate_thermal = compute_heating_rate_from_flux(thermal_net, altitude, rho, cp, seconds_per_day)
+    heating_rate_solar = compute_heating_rate_from_flux(solar_net, altitude, rho, cp, seconds_per_day)
+
+    return heating_rate_net, heating_rate_thermal, heating_rate_solar

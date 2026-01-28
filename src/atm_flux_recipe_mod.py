@@ -29,7 +29,7 @@ class AtmosphericFlux:
         #atmospheric_altitude: float = 50e3,
         surface_temperature: float = 255.0,
         NQuad: int = 16,
-        solar_latitude: float = 75.0,
+        solar_latitude: float = 0.0,
         solar_longitude: float = 0.0,
         species: list = ["H2O-161", "O2-66", "N2-44", "CO2-626", "O3-XFIT"],
         remove_lines_percentile: (
