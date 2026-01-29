@@ -146,6 +146,7 @@ class AtmosphericFlux:
         atm_latitude: float = 75.0,
         atm_longitude: float = 0.0,
         max_level_step: None = None,
+        use_input_levels: bool = True,  # New parameter
     ):
         """Get the total flux profile
 
@@ -166,13 +167,39 @@ class AtmosphericFlux:
             atmospheric_profile
         )
 
-        # self.ws.ray_path_atmospheric_point.update(atmospheric_profile)
+        if use_input_levels:
+            # Create ray path directly from atmospheric profile levels
+            # Extract altitude from the atmospheric profile
+            if hasattr(atmospheric_profile, 'alt'):
+                altitudes = atmospheric_profile.alt.values
+            elif hasattr(atmospheric_profile, 'z'):
+                altitudes = atmospheric_profile.z.values
+            elif 'alt' in atmospheric_profile:
+                altitudes = atmospheric_profile['alt'].values
+            elif 'z' in atmospheric_profile:
+                altitudes = atmospheric_profile['z'].values
+            else:
+                raise ValueError("Cannot find altitude coordinate in atmospheric_profile")
 
-        self.ws.ray_pathGeometricDownlooking(
-            latitude=atm_latitude,
-            longitude=atm_longitude,
-            max_step=max_level_step,
-        )
+            # ARTS expects descending altitudes (top to bottom)
+            # So reverse if ascending
+            if altitudes[0] < altitudes[-1]:  # Check if ascending
+                altitudes = altitudes[::-1]  # Reverse to descending
+
+            # Create ray path with exact input levels (descending order)
+            self.ws.ray_path = pyarts.arts.ArrayOfPropagationPathPoint()
+            for alt in altitudes:
+                point = pyarts.arts.PropagationPathPoint()
+                point.pos = [alt, atm_latitude, atm_longitude]
+                point.los = [180.0, 0.0]  # Downward looking
+                self.ws.ray_path.append(point)
+        else:
+            # Use the original method with potential subdivision
+            self.ws.ray_pathGeometricDownlooking(
+                latitude=atm_latitude,
+                longitude=atm_longitude,
+                max_step=max_level_step,
+            )
 
         self.ws.ray_path_atmospheric_pointFromPath()
 
@@ -185,7 +212,7 @@ class AtmosphericFlux:
             surface_setting="Lambertian",
             sun_setting="Sun",
             surface_lambertian_value=self.visible_surface_reflectivity
-            * np.ones_like(self.visf),
+                                     * np.ones_like(self.visf),
         )
         self.ws.disort_spectral_flux_fieldFromAgenda()
 
@@ -209,7 +236,7 @@ class AtmosphericFlux:
             surface_setting="ThermalLambertian",
             sun_setting="None",
             surface_lambertian_value=self.thermal_surface_reflectivity
-            * np.ones_like(self.visf),
+                                     * np.ones_like(self.visf),
         )
         self.ws.disort_spectral_flux_fieldFromAgenda()
 
@@ -224,13 +251,16 @@ class AtmosphericFlux:
             ),
         )
 
+        # Calculate altitude at layer centers
+        altitude_output = np.array(
+            [
+                0.5 * (self.ws.ray_path[i].pos[0] + self.ws.ray_path[i + 1].pos[0])
+                for i in range(len(self.ws.ray_path) - 1)
+            ]
+        )
+
         return (
             self.SOLAR,
             self.THERMAL,
-            np.array(
-                [
-                    0.5 * (self.ws.ray_path[i].pos[0] + self.ws.ray_path[i + 1].pos[0])
-                    for i in range(len(self.ws.ray_path) - 1)
-                ]
-            ),
+            altitude_output,
         )

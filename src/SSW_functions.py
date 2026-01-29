@@ -199,12 +199,12 @@ def calculate_fluxes(year, species_list=["H2O-161", "O2-66", "N2-44", "CO2-626",
 
         solar, thermal, altitude = fop(
             atmospheric_profile=atm_profile,
-            surface_temperature=atm_profile.t[0]
+            surface_temperature=atm_profile.t[0],
+            max_level_step=None
         )
         net_lw = thermal.up - thermal.down
         net_sw = solar.up - solar.down
         net_flux = net_lw + net_sw
-
         solar_fluxes.append(solar)
         thermal_fluxes.append(thermal)
         altitudes.append(altitude)
@@ -252,6 +252,40 @@ def calculate_fluxes(year, species_list=["H2O-161", "O2-66", "N2-44", "CO2-626",
 
     return solar_fluxes, thermal_fluxes, altitudes, net_thermal, net_solar, net_total
 
+def map_fluxes_on_atm_profile(year, net_thermal, net_total, altitudes):
+
+    timesteps = duration(year)
+
+    net_thermal_37_list = []
+    net_total_37_list = []
+
+    for timestep in range(timesteps):
+        atm_profile = get_atm(year, timestep)
+
+        thermal = interp1d(
+            altitudes[timestep],
+            np.log(net_thermal[timestep]),
+            kind='linear',
+            bounds_error=False,
+            fill_value="extrapolate"
+        )
+
+        net_thermal_37 = np.exp(thermal(atm_profile.alt))
+        net_thermal_37_list.append(net_thermal_37)
+
+        total = interp1d(
+            altitudes[timestep],
+            np.log(net_total[timestep]),
+            kind='linear',
+            bounds_error=False,
+            fill_value="extrapolate"
+        )
+
+        net_total_37 = np.exp(total(atm_profile.alt))
+        net_total_37_list.append(net_total_37)
+
+    return net_thermal_37_list, net_total_37_list
+
 def observed_temperature(year, pressure_level_strat):
     """
     Extracts the observed temperature evolution with time of an SSW event in a specific year.
@@ -276,118 +310,305 @@ def observed_temperature(year, pressure_level_strat):
         temp_strat.append(atmosphere.t[pressure_level_strat])
     return np.array(temp_strat), pressure_level.item()
 
-# def calculate_heating_rate(solar, thermal, altitude):
+# def calculate_heating_rate_with_density(solar, thermal, altitude, atm_profile):
 #     """
-#     Calculate heating rate in K/day from fluxes using altitude gradient.
-#
-#     Parameters:
-#     -----------
-#     solar : Flux object with .up, .direct_down, .diffuse_down
-#     thermal : Flux object with .up and .diffuse_down (or .down)
-#     altitude : array of altitude levels in meters
-#
-#     Returns:
-#     --------
-#     heating_rate_net, heating_rate_thermal, heating_rate_solar : arrays of heating rates in K/day
+#     Calculate heating rate with altitude-dependent air density.
 #     """
-#
-#     def compute_heating_rate_from_flux(flux, altitude, rho, cp, seconds_per_day):
-#         """Helper function to compute heating rate from a flux array."""
-#         flux_divergence = np.zeros_like(flux)
-#
-#         # Central differences for interior points
-#         for i in range(1, len(flux) - 1):
-#             flux_divergence[i] = (flux[i + 1] - flux[i - 1]) / (altitude[i + 1] - altitude[i - 1])
-#
-#         # Boundary conditions
-#         flux_divergence[0] = (flux[1] - flux[0]) / (altitude[1] - altitude[0])
-#         flux_divergence[-1] = (flux[-1] - flux[-2]) / (altitude[-1] - altitude[-2])
-#
-#         # Calculate heating rate
-#         return -(1 / (rho * cp)) * flux_divergence * seconds_per_day
-#
-#     # Constants
 #     cp = 1004  # J/(kg·K)
-#     rho = 1.225  # kg/m³
 #     seconds_per_day = 86400
+#     p_profile_37 = atm_profile.p
+#     t_profile_37 = atm_profile.t
+#     z_profile_37 = atm_profile.alt
 #
-#     # Calculate net fluxes at each level (W/m²)
-#     solar_net = solar.up - solar.direct_down - solar.diffuse_down
+#     R = 287  # J/(kg·K)
+#     rho = p_profile_37 / (R * t_profile_37)  # kg/m³
+#
+#     # Calculate net fluxes
+#     solar_net = solar.up - solar.down
 #     thermal_net = thermal.up - thermal.down
 #     net_flux = solar_net + thermal_net
 #
-#     # Calculate heating rates for all flux types
-#     heating_rate_net = compute_heating_rate_from_flux(net_flux, altitude, rho, cp, seconds_per_day)
-#     heating_rate_thermal = compute_heating_rate_from_flux(thermal_net, altitude, rho, cp, seconds_per_day)
-#     heating_rate_solar = compute_heating_rate_from_flux(solar_net, altitude, rho, cp, seconds_per_day)
+#     # Calculate flux divergence (dF/dz)
+#     solar_divergence = np.zeros_like(solar_net)
+#     thermal_divergence = np.zeros_like(thermal_net)
+#     flux_divergence = np.zeros_like(net_flux)
 #
-#     return heating_rate_net, heating_rate_thermal, heating_rate_solar
+#     for i in range(1, len(net_flux) - 1):
+#         # Total flux divergence
+#         flux_divergence[i] = (net_flux[i + 1] - net_flux[i - 1]) / (altitude[i + 1] - altitude[i - 1])
+#         # Solar (shortwave) flux divergence
+#         solar_divergence[i] = (solar_net[i + 1] - solar_net[i - 1]) / (altitude[i + 1] - altitude[i - 1])
+#         # Thermal (longwave) flux divergence
+#         thermal_divergence[i] = (thermal_net[i + 1] - thermal_net[i - 1]) / (altitude[i + 1] - altitude[i - 1])
+#
+#
+#     # Boundary conditions
+#     flux_divergence[0] = (net_flux[1] - net_flux[0]) / (altitude[1] - altitude[0])
+#     flux_divergence[-1] = (net_flux[-1] - net_flux[-2]) / (altitude[-1] - altitude[-2])
+#
+#     solar_divergence[0] = (solar_net[1] - solar_net[0]) / (altitude[1] - altitude[0])
+#     solar_divergence[-1] = (solar_net[-1] - solar_net[-2]) / (altitude[-1] - altitude[-2])
+#
+#     thermal_divergence[0] = (thermal_net[1] - thermal_net[0]) / (altitude[1] - altitude[0])
+#     thermal_divergence[-1] = (thermal_net[-1] - thermal_net[-2]) / (altitude[-1] - altitude[-2])
+#
+#     # Calculate heating rates with variable density
+#     heating_rate = -(1 / (rho * cp)) * flux_divergence * seconds_per_day
+#     sw_heating_rate = -(1 / (rho * cp)) * solar_divergence * seconds_per_day
+#     lw_cooling_rate = -(1 / (rho * cp)) * thermal_divergence * seconds_per_day
+#
+#     return heating_rate, sw_heating_rate, lw_cooling_rate, t_profile_37, p_profile_37, z_profile_37
 
 
-def calculate_heating_rate_with_density(solar, thermal, altitude, atm_profile):
+def calculate_heating_rate_with_density(thermal_net, atm_profile, use_geometric_mean_p=True):
     """
     Calculate heating rate with altitude-dependent air density.
+
+    Parameters:
+    -----------
+    solar : object with .up and .down attributes
+        Solar flux data at layer centers (36 values)
+    thermal : object with .up and .down attributes
+        Thermal flux data at layer centers (36 values)
+    altitude : array-like
+        Altitude at layer centers (36 values)
+    atm_profile : object
+        Atmospheric profile with .p, .t, and .alt attributes at levels (37 values)
+    use_geometric_mean_p : bool, optional
+        Use geometric mean for pressure (more accurate). Default True.
+
+    Returns:
+    --------
+    heating_rate : array (36 values)
+        Total heating rate at layer centers (K/day)
+    sw_heating_rate : array (36 values)
+        Shortwave heating rate at layer centers (K/day)
+    lw_cooling_rate : array (36 values)
+        Longwave cooling rate at layer centers (K/day)
+    t_profile_layers : array (36 values)
+        Temperature at layer centers (K)
+    p_profile_layers : array (36 values)
+        Pressure at layer centers (Pa)
+    z_profile_layers : array (36 values)
+        Altitude at layer centers (m)
     """
     cp = 1004  # J/(kg·K)
     seconds_per_day = 86400
+    R = 287  # J/(kg·K)
+
+    # Get level values (37 values)
     p_profile_37 = atm_profile.p
     t_profile_37 = atm_profile.t
-    z_profile_37 = atm_profile.alt
+    z_profile = atm_profile.alt
 
-    f_logp = interp1d(
-        z_profile_37,
-        np.log(p_profile_37),
-        kind="linear",
-        bounds_error=False,
-        fill_value='extrapolate',
-    )
-    p_profile = np.exp(f_logp(altitude))
+    # Calculate density at layer boarders (37 values)
+    rho = p_profile_37 / (R * t_profile_37)  # kg/m³
 
-    f_t = interp1d(
-        z_profile_37,
-        t_profile_37,
-        kind="linear",
-        bounds_error=False,
-        fill_value='extrapolate',
-    )
-    t_profile = f_t(altitude)
+    rho = np.asarray(rho)
 
-    # Get density from atmospheric profile (pressure and temperature)
-    # rho = p / (R * T), where R = 287 J/(kg·K) for dry air
-    R = 287  # J/(kg·K)
-    rho = p_profile / (R * t_profile)  # kg/m³
+    if hasattr(rho, 'values'):
+        rho = rho.values
 
-    # Calculate net fluxes
-    solar_net = solar.up - solar.down
-    thermal_net = thermal.up - thermal.down
-    net_flux = solar_net + thermal_net
+    rho_layer_profile = np.sqrt(rho[:-1] * rho[1:])[::-1]
+
+    print(rho_layer_profile)
+    print(len(rho_layer_profile))
 
     # Calculate flux divergence (dF/dz)
-    solar_divergence = np.zeros_like(solar_net)
     thermal_divergence = np.zeros_like(thermal_net)
-    flux_divergence = np.zeros_like(net_flux)
 
-    for i in range(1, len(net_flux) - 1):
-        # Total flux divergence
-        flux_divergence[i] = (net_flux[i + 1] - net_flux[i - 1]) / (altitude[i + 1] - altitude[i - 1])
-        # Solar (shortwave) flux divergence
-        solar_divergence[i] = (solar_net[i + 1] - solar_net[i - 1]) / (altitude[i + 1] - altitude[i - 1])
-        # Thermal (longwave) flux divergence
-        thermal_divergence[i] = (thermal_net[i + 1] - thermal_net[i - 1]) / (altitude[i + 1] - altitude[i - 1])
+
+    for i in range(1, len(thermal_net) - 1):
+        thermal_divergence[i] = (thermal_net[i + 1] - thermal_net[i-1]) / (z_profile[i + 1] - z_profile[i-1])
 
     # Boundary conditions
-    flux_divergence[0] = (net_flux[1] - net_flux[0]) / (altitude[1] - altitude[0])
-    flux_divergence[-1] = (net_flux[-1] - net_flux[-2]) / (altitude[-1] - altitude[-2])
-
-    solar_divergence[0] = (solar_net[1] - solar_net[0]) / (altitude[1] - altitude[0])
-    solar_divergence[-1] = (solar_net[-1] - solar_net[-2]) / (altitude[-1] - altitude[-2])
-
-    thermal_divergence[0] = (thermal_net[1] - thermal_net[0]) / (altitude[1] - altitude[0])
-    thermal_divergence[-1] = (thermal_net[-1] - thermal_net[-2]) / (altitude[-1] - altitude[-2])
+    thermal_divergence[0] = (thermal_net[1] - thermal_net[0]) / (z_profile[1] - z_profile[0])
+    thermal_divergence[-1] = (thermal_net[-1] - thermal_net[-2]) / (z_profile[-1] - z_profile[-2])
 
     # Calculate heating rates with variable density
-    heating_rate = -(1 / (rho * cp)) * flux_divergence * seconds_per_day
-    sw_heating_rate = -(1 / (rho * cp)) * solar_divergence * seconds_per_day
     lw_cooling_rate = -(1 / (rho * cp)) * thermal_divergence * seconds_per_day
 
-    return heating_rate, sw_heating_rate, lw_cooling_rate
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+    axes[0, 0].plot(thermal_net, z_profile, 'o-')
+    axes[0, 0].set_xlabel('Net Flux (W/m²)')
+    axes[0, 0].set_ylabel('Altitude (km)')
+    axes[0, 0].set_title('Net Flux Profile')
+    axes[0, 0].grid(True)
+
+    axes[0, 1].plot(thermal_divergence, z_profile, 'o-')
+    axes[0, 1].set_xlabel('Flux Divergence (W/m³)')
+    axes[0, 1].set_ylabel('Altitude (km)')
+    axes[0, 1].set_title('Flux Divergence')
+    axes[0, 1].grid(True)
+
+    axes[1, 0].plot(rho, z_profile, 'o-')
+    axes[1, 0].set_xlabel('Density (kg/m³)')
+    axes[1, 0].set_ylabel('Altitude (km)')
+    axes[1, 0].set_title('Air Density')
+    axes[1, 0].grid(True)
+
+    axes[1, 1].plot(lw_cooling_rate, z_profile, 'o-')
+    axes[1, 1].set_xlabel('Heating Rate (K/day)')
+    axes[1, 1].set_ylabel('Altitude (km)')
+    axes[1, 1].set_title('Heating Rate')
+    axes[1, 1].grid(True)
+    axes[1, 1].axvline(0, color='k', linestyle='--', alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+
+    return lw_cooling_rate, z_profile, t_profile_37, p_profile_37
+
+def calculate_expected_temperature(heating_rates, temperature_profiles, time_step_hours=24):
+    """
+    Calculate expected temperature profile based on heating rates.
+
+    Parameters:
+    -----------
+    heating_rates : array-like, shape (n_days, n_levels)
+        Heating rates in K/day for each day and altitude level
+    temperature_profiles : array-like, shape (n_days, n_levels)
+        Temperature profiles in K for each day and altitude level
+    time_step_hours : float, optional
+        Time step in hours (default: 24 for daily heating rates)
+
+    Returns:
+    --------
+    expected_temps : array-like, shape (n_days, n_levels)
+        Expected temperature profiles based on heating rate integration
+    """
+    heating_rates = np.array(heating_rates, dtype=object)
+    temperature_profiles = np.array(temperature_profiles, dtype=object)
+
+    n_days, n_levels = heating_rates.shape
+    expected_temps = np.zeros_like(temperature_profiles)
+
+    # Initialize with the first day's actual temperature
+    expected_temps[0] = temperature_profiles[0]
+
+    # Convert time step to fraction of a day
+    time_step_days = time_step_hours / 24.0
+
+    # Integrate heating rates forward in time
+    for day in range(1, n_days):
+        # Apply heating rate from previous day to get next day's temperature
+        # dT/dt = heating_rate (in K/day)
+        # T(t+dt) = T(t) + heating_rate * dt
+        expected_temps[day] = expected_temps[day - 1] + heating_rates[day - 1] * time_step_days
+
+    return expected_temps
+
+
+def calculate_expected_temperature_with_diagnostics(heating_rates, temperature_profiles,
+                                                    time_step_hours=24):
+    """
+    Calculate expected temperature profile with diagnostic information.
+
+    Parameters:
+    -----------
+    heating_rates : array-like, shape (n_days, n_levels)
+        Heating rates in K/day for each day and altitude level
+    temperature_profiles : array-like, shape (n_days, n_levels)
+        Actual temperature profiles in K for each day and altitude level
+    time_step_hours : float, optional
+        Time step in hours (default: 24 for daily heating rates)
+
+    Returns:
+    --------
+    results : dict
+        Dictionary containing:
+        - 'expected_temps': Expected temperature profiles
+        - 'actual_temps': Actual temperature profiles (for comparison)
+        - 'temperature_bias': Difference between expected and actual (expected - actual)
+        - 'rmse': Root mean square error for each day
+        - 'mean_bias': Mean bias for each day
+    """
+    heating_rates = np.array(heating_rates)
+    temperature_profiles = np.array(temperature_profiles)
+
+    n_days, n_levels = heating_rates.shape
+    expected_temps = np.zeros_like(temperature_profiles)
+
+    # Initialize with the first day's actual temperature
+    expected_temps[0] = temperature_profiles[0]
+
+    # Convert time step to fraction of a day
+    time_step_days = time_step_hours / 24.0
+
+    # Integrate heating rates forward in time
+    for day in range(1, n_days):
+        expected_temps[day] = expected_temps[day - 1] + heating_rates[day - 1] * time_step_days
+
+    # Calculate diagnostics
+    temperature_bias = expected_temps - temperature_profiles
+
+    # RMSE for each day
+    rmse = np.sqrt(np.mean(temperature_bias ** 2, axis=1))
+
+    # Mean bias for each day
+    mean_bias = np.mean(temperature_bias, axis=1)
+
+    results = {
+        'expected_temps': expected_temps,
+        'actual_temps': temperature_profiles,
+        'temperature_bias': temperature_bias,
+        'rmse': rmse,
+        'mean_bias': mean_bias
+    }
+
+    return results
+
+
+def calculate_expected_temperature_multilevel(heating_rates, temperature_profiles,
+                                              time_step_hours=24, method='forward_euler'):
+    """
+    Calculate expected temperature with different integration methods.
+
+    Parameters:
+    -----------
+    heating_rates : array-like, shape (n_days, n_levels)
+        Heating rates in K/day for each day and altitude level
+    temperature_profiles : array-like, shape (n_days, n_levels)
+        Temperature profiles in K for each day and altitude level
+    time_step_hours : float, optional
+        Time step in hours (default: 24 for daily heating rates)
+    method : str, optional
+        Integration method: 'forward_euler', 'backward_euler', or 'trapezoidal'
+
+    Returns:
+    --------
+    expected_temps : array-like, shape (n_days, n_levels)
+        Expected temperature profiles
+    """
+    heating_rates = np.array(heating_rates)
+    temperature_profiles = np.array(temperature_profiles)
+
+    n_days, n_levels = heating_rates.shape
+    expected_temps = np.zeros_like(temperature_profiles)
+
+    # Initialize with the first day's actual temperature
+    expected_temps[0] = temperature_profiles[0]
+
+    # Convert time step to fraction of a day
+    dt = time_step_hours / 24.0
+
+    if method == 'forward_euler':
+        # Forward Euler: T(n+1) = T(n) + HR(n) * dt
+        for day in range(1, n_days):
+            expected_temps[day] = expected_temps[day - 1] + heating_rates[day - 1] * dt
+
+    elif method == 'backward_euler':
+        # Backward Euler: T(n+1) = T(n) + HR(n+1) * dt
+        for day in range(1, n_days):
+            expected_temps[day] = expected_temps[day - 1] + heating_rates[day] * dt
+
+    elif method == 'trapezoidal':
+        # Trapezoidal rule: T(n+1) = T(n) + (HR(n) + HR(n+1)) / 2 * dt
+        for day in range(1, n_days):
+            expected_temps[day] = (expected_temps[day - 1] +
+                                   0.5 * (heating_rates[day - 1] + heating_rates[day]) * dt)
+    else:
+        raise ValueError(f"Unknown method: {method}")
+
+    return expected_temps
