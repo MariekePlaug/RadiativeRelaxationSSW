@@ -363,15 +363,31 @@ def calculate_heating_rate_with_density(solar, thermal, altitude, atm_profile):
     net_flux = solar_net + thermal_net
 
     # Calculate flux divergence (dF/dz)
+    solar_divergence = np.zeros_like(solar_net)
+    thermal_divergence = np.zeros_like(thermal_net)
     flux_divergence = np.zeros_like(net_flux)
 
     for i in range(1, len(net_flux) - 1):
-        flux_divergence[i] = (net_flux[i+1] - net_flux[i-1]) / (altitude[i+1] - altitude[i-1])
+        # Total flux divergence
+        flux_divergence[i] = (net_flux[i + 1] - net_flux[i - 1]) / (altitude[i + 1] - altitude[i - 1])
+        # Solar (shortwave) flux divergence
+        solar_divergence[i] = (solar_net[i + 1] - solar_net[i - 1]) / (altitude[i + 1] - altitude[i - 1])
+        # Thermal (longwave) flux divergence
+        thermal_divergence[i] = (thermal_net[i + 1] - thermal_net[i - 1]) / (altitude[i + 1] - altitude[i - 1])
 
+    # Boundary conditions
     flux_divergence[0] = (net_flux[1] - net_flux[0]) / (altitude[1] - altitude[0])
     flux_divergence[-1] = (net_flux[-1] - net_flux[-2]) / (altitude[-1] - altitude[-2])
 
-    # Calculate heating rate with variable density
-    heating_rate = -(1 / (rho * cp)) * flux_divergence * seconds_per_day
+    solar_divergence[0] = (solar_net[1] - solar_net[0]) / (altitude[1] - altitude[0])
+    solar_divergence[-1] = (solar_net[-1] - solar_net[-2]) / (altitude[-1] - altitude[-2])
 
-    return heating_rate
+    thermal_divergence[0] = (thermal_net[1] - thermal_net[0]) / (altitude[1] - altitude[0])
+    thermal_divergence[-1] = (thermal_net[-1] - thermal_net[-2]) / (altitude[-1] - altitude[-2])
+
+    # Calculate heating rates with variable density
+    heating_rate = -(1 / (rho * cp)) * flux_divergence * seconds_per_day
+    sw_heating_rate = -(1 / (rho * cp)) * solar_divergence * seconds_per_day
+    lw_cooling_rate = -(1 / (rho * cp)) * thermal_divergence * seconds_per_day
+
+    return heating_rate, sw_heating_rate, lw_cooling_rate

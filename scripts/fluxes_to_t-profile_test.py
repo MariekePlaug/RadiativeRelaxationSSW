@@ -68,12 +68,14 @@ solar_rates_list = []
 
 
 for timestep in range(length):
-    heating_rate_net, heating_rate_thermal, heating_rate_solar = ssw.calculate_heating_rate(solar_2007[timestep],
-                                                                                            thermal_2007[timestep],
-                                                                                            altitude_2007[timestep])
+    heating_rate_net = ssw.calculate_heating_rate_with_density(
+        solar_2007[timestep],
+        thermal_2007[timestep],
+        altitude_2007[timestep],
+        atm_profile=ssw.get_atm(year, timestep)
+    )
+
     net_heating_rates_list.append(heating_rate_net)
-    thermal_rates_list.append(heating_rate_thermal)
-    solar_rates_list.append(heating_rate_solar)
 
 # %%
 
@@ -81,8 +83,8 @@ fig, axes = plt.subplots(1, len(timesteps), figsize=(10, 6))
 
 for i, (ax, day) in enumerate(zip(axes, timesteps)):
     ax.plot(net_heating_rates_list[day], altitude_2007[day] / 1e3)
-    ax.plot(thermal_rates_list[day], altitude_2007[day] / 1e3)
-    ax.plot(solar_rates_list[day], altitude_2007[day] / 1e3)
+    # ax.plot(thermal_rates_list[day], altitude_2007[day] / 1e3)
+    # ax.plot(solar_rates_list[day], altitude_2007[day] / 1e3)
     ax.legend(["net heating rate", "LW cooling rate", "SW heating rate"])
     ax.set_ylabel("altitude [km]")
     ax.set_xlabel("Heating Rate [K/day]")
