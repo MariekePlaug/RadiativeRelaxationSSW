@@ -24,7 +24,7 @@ class AtmosphericFlux:
 
     def __init__(
         self,
-        visible_surface_reflectivity: float = 0.3,
+        visible_surface_reflectivity: float = 0.8,
         thermal_surface_reflectivity: float = 0.05,
         #atmospheric_altitude: float = 50e3,
         surface_temperature: float = 255.0,
