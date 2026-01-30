@@ -12,7 +12,7 @@ from src.atm_flux_recipe_mod import AtmosphericFlux
 
 # Download catalogs
 pyarts.data.download()
-from src.SSW_functions import get_atm, rad_heating_rate
+from src.SSW_functions import get_atm
 
 
 # %% Initialize the operator

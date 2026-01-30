@@ -116,25 +116,19 @@ expected_temps_test = ssw.calculate_expected_temperature(
 
 # %%
 
-print(expected_temps_test)
-
 fig, ax = plt.subplots(1, figsize=(8, 12))
 
-ax.plot(expected_temps_test[0], p_profiles_list[0] / 1e2)
-ax.plot(expected_temps_test[1], p_profiles_list[1] / 1e2)
-ax.plot(expected_temps_test[2], p_profiles_list[2] / 1e2)
-ax.plot(expected_temps_test[3], p_profiles_list[3] / 1e2)
-ax.plot(expected_temps_test[4], p_profiles_list[4] / 1e2)
-ax.plot(expected_temps_test[5], p_profiles_list[5] / 1e2)
+n_days = len(expected_temps_test)
+
+for i in range(n_days):
+    ax.plot(expected_temps_test[i], p_profiles_list[i] / 1e2, label=f"day {i}")
+
 ax.set_yscale("log")
 ax.set_ylim(ax.get_ylim()[::-1])
-ax.legend(["day 0", "day 1", "day 2", "day 3", "day 4", "day 5"])
+ax.legend()
 ax.set_xlabel("Temperature [K]")
-ax.set_ylabel("pressure [hPa")
-ax.set_title(f"Expedcted temperature profile from heating rates")
+ax.set_ylabel("Pressure [hPa]")
+ax.set_title(f"Expected temperature profile from heating rates in {year}")
 
 plt.tight_layout()
 plt.show()
-
-# %%
-print(p_profiles_list[0])

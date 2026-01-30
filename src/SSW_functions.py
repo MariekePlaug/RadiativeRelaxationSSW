@@ -411,9 +411,6 @@ def calculate_heating_rate_with_density(thermal_net, atm_profile, use_geometric_
 
     rho_layer_profile = np.sqrt(rho[:-1] * rho[1:])[::-1]
 
-    print(rho_layer_profile)
-    print(len(rho_layer_profile))
-
     # Calculate flux divergence (dF/dz)
     thermal_divergence = np.zeros_like(thermal_net)
 
@@ -456,7 +453,7 @@ def calculate_heating_rate_with_density(thermal_net, atm_profile, use_geometric_
     axes[1, 1].axvline(0, color='k', linestyle='--', alpha=0.3)
 
     plt.tight_layout()
-    plt.show()
+
 
     return lw_cooling_rate, z_profile, t_profile_37, p_profile_37
 
